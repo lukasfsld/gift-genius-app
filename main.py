@@ -18,7 +18,7 @@ st.markdown("""
     }
     .subtitle { text-align: center; color: #666; font-size: 1.1rem; margin-bottom: 3rem; }
     
-    /* Karten-Design für 3 Spalten */
+    /* Karten-Design */
     .gift-card {
         background: white; 
         border-radius: 20px; 
@@ -64,9 +64,9 @@ st.markdown("""
 # --- 3. SEITENLEISTE (Inputs) ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/4213/4213958.png", width=70)
-    st.markdown("### Einstellungen")
+    st.markdown("### Deine Suche")
     
-    # Key automatisch laden
+    # Key Check
     if "OPENAI_API_KEY" in st.secrets:
         api_key = st.secrets["OPENAI_API_KEY"]
         st.success("Bereit ✅", icon="🚀")
@@ -76,77 +76,81 @@ with st.sidebar:
     
     st.markdown("---")
     
-    relation = st.selectbox("Für wen?", ["Partner/in", "Eltern", "Bester Freund/in", "Kind", "Kollege", "Nachbar"])
-    age = st.slider("Alter", 1, 99, 28)
+    # NEU: Text Inputs statt Dropdown
+    relation = st.text_input("Für wen ist das Geschenk?", placeholder="z.B. Mein Bruder, Chefin, Opa...")
+    occasion = st.text_input("Zu welchem Anlass?", placeholder="z.B. Geburtstag, Weihnachten, Hochzeit...")
+    
+    age = st.slider("Alter (ca.)", 1, 99, 30)
     budget = st.select_slider("Budget", options=["Kleinigkeit", "20-50€", "50-100€", "Luxus (>100€)"])
-    interests = st.text_area("Hobbys & Vorlieben", height=120, placeholder="z.B. Mag Kaffee, Star Wars und Camping...")
+    interests = st.text_area("Hobbys & Charakter", height=120, placeholder="z.B. Liebt schwarzen Humor, kocht gerne, mag keine Technik...")
     
     st.markdown("---")
-    start_search = st.button("✨ 3 Ideen finden", use_container_width=True, type="primary")
+    start_search = st.button("✨ Ideen finden", use_container_width=True, type="primary")
 
 
 # --- 4. HAUPTBEREICH ---
 st.markdown('<div class="gradient-text">GiftGenius AI</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Finde 3 präzise Vorschläge in Sekunden.</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Persönliche Geschenkideen für jeden Anlass.</div>', unsafe_allow_html=True)
 
-if start_search and interests:
-    client = OpenAI(api_key=api_key)
-    
-    with st.spinner('🔍 Die KI sucht nach konkreten Markenprodukten...'):
-        try:
-            # DER TRICK: Wir zwingen die KI zu "Specific Model Names"
-            prompt = f"""
-            Rolle: Shopping-Experte.
-            Zielperson: {relation}, {age} Jahre.
-            Budget: {budget}.
-            Interessen: {interests}.
-            
-            Aufgabe: Finde 3 KONKRETE Markenprodukte.
-            REGEL: Du darfst NICHT generisch sein (z.B. nicht "Eine Kaffeemaschine", sondern "De'Longhi Dedica EC685").
-            Das Ziel ist, dass der Suchbegriff bei Amazon genau dieses eine Produkt oben anzeigt.
-            
-            Format JSON: 
-            {{ "items": [ 
-                {{ 
-                    "title": "Exakter Produktname", 
-                    "text": "Kurze Begründung (max 2 Sätze)", 
-                    "search": "Marke + Modellnummer" 
-                }} 
-            ] }}
-            """
-            
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7
-            )
-            
-            data = json.loads(response.choices[0].message.content.replace("```json", "").replace("```", ""))
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            col1, col2, col3 = st.columns(3)
-            cols = [col1, col2, col3]
-
-            for i, item in enumerate(data["items"]):
-                # Link bauen (ohne Affiliate Tag, rein organisch)
-                search_query = item['search'].replace(' ', '+')
-                amazon_url = f"https://www.amazon.de/s?k={search_query}"
+if start_search:
+    if not relation or not interests:
+         st.warning("⚠️ Bitte verrate mir zumindest, für wen das Geschenk ist und was die Person mag.")
+    else:
+        client = OpenAI(api_key=api_key)
+        
+        with st.spinner('🔍 Die KI sucht nach passenden Markenprodukten...'):
+            try:
+                # Prompt mit den neuen Infos (Anlass & Freitext-Person)
+                prompt = f"""
+                Rolle: Shopping-Experte und Trendscout.
+                Zielperson: {relation}, {age} Jahre.
+                Anlass: {occasion if occasion else "Kein spezieller Anlass"}.
+                Budget: {budget}.
+                Interessen: {interests}.
                 
-                with cols[i]:
-                    st.markdown(f"""
-                    <div class="gift-card">
-                        <div>
-                            <div class="card-title">{item['title']}</div>
-                            <div class="card-desc">{item['text']}</div>
+                Aufgabe: Finde 3 KONKRETE Markenprodukte.
+                REGEL: Sei kreativ und spezifisch! Keine generischen Ideen wie "Gutschein" oder "Socken".
+                Nenne exakte Modellbezeichnungen für die Suche.
+                
+                Format JSON: 
+                {{ "items": [ 
+                    {{ 
+                        "title": "Exakter Produktname", 
+                        "text": "Warum das perfekt zu {relation} und dem Anlass passt (kurz).", 
+                        "search": "Marke + Modellnummer" 
+                    }} 
+                ] }}
+                """
+                
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7
+                )
+                
+                data = json.loads(response.choices[0].message.content.replace("```json", "").replace("```", ""))
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                col1, col2, col3 = st.columns(3)
+                cols = [col1, col2, col3]
+
+                for i, item in enumerate(data["items"]):
+                    # Suchlink bauen
+                    search_query = item['search'].replace(' ', '+')
+                    amazon_url = f"https://www.amazon.de/s?k={search_query}"
+                    
+                    with cols[i]:
+                        st.markdown(f"""
+                        <div class="gift-card">
+                            <div>
+                                <div class="card-title">{item['title']}</div>
+                                <div class="card-desc">{item['text']}</div>
+                            </div>
+                            <a href="{amazon_url}" target="_blank" class="buy-btn">
+                                Auf Amazon ansehen ➔
+                            </a>
                         </div>
-                        <a href="{amazon_url}" target="_blank" class="buy-btn">
-                            Auf Amazon ansehen ➔
-                        </a>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        """, unsafe_allow_html=True)
 
-        except Exception as e:
-            st.error(f"Fehler: {e}")
-
-elif start_search:
-    st.warning("Gib bitte ein paar Interessen ein.")
+            except Exception as e:
+                st.error(f"Fehler: {e}")
